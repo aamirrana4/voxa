@@ -13,6 +13,7 @@ const state = {
   speakers: [{ label: "A", voiceId: "" }, { label: "B", voiceId: "" }],
   myClones: [],
   previewingId: null,
+  auth: { loggedIn: false, email: "", isAdmin: false, credits: 0 },
 };
 try { state.myClones = JSON.parse(localStorage.getItem("voxa_clones") || "[]"); } catch (e) {}
 
@@ -42,26 +43,30 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 /* ---------------- api helpers ---------------- */
-async function apiGet(path) {
-  const r = await fetch("/api" + path);
-  return r.json();
+function _apiError(res, data) {
+  if (res.status === 401) return { code: "login_required" };
+  if (res.status === 402) return { code: "insufficient_credits", needed: (data && data.needed) || 0, balance: (data && data.balance) || 0 };
+  if (res.status === 403) return { code: "forbidden" };
+  return null;
 }
+async function apiFetch(path, opts) {
+  const r = await fetch("/api" + path, opts);
+  let d = null;
+  try { d = await r.json(); } catch (e) { d = null; }
+  const err = _apiError(r, d);
+  if (err) {
+    if (err.code === "login_required") openAuthModal();
+    err.data = d;
+    throw err;
+  }
+  return d;
+}
+async function apiGet(path) { return apiFetch(path); }
 async function apiPost(path, body) {
-  const r = await fetch("/api" + path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  return r.json();
+  return apiFetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
 }
-async function apiForm(path, formData) {
-  const r = await fetch("/api" + path, { method: "POST", body: formData });
-  return r.json();
-}
-async function apiDelete(path) {
-  const r = await fetch("/api" + path, { method: "DELETE" });
-  return r.json();
-}
+async function apiForm(path, formData) { return apiFetch(path, { method: "POST", body: formData }); }
+async function apiDelete(path) { return apiFetch(path, { method: "DELETE" }); }
 
 function showError(resultEl, msg) {
   resultEl.hidden = false;
@@ -92,9 +97,11 @@ async function runJob({ btn, progressId, resultId, start, render }) {
     if (!taskId) throw new Error((created && (created.error || created.message)) || "Could not start the task.");
     const done = await pollTask(taskId, progressEl);
     render(resultEl, done);
-    refreshCredits();
+    refreshAuth();
   } catch (e) {
-    showError(resultEl, e.message || e);
+    if (e && e.code === "login_required") { /* auth modal already opened */ }
+    else if (e && e.code === "insufficient_credits") showNoCredits(resultEl, e);
+    else showError(resultEl, (e && e.message) || e);
   } finally {
     progressEl.hidden = true;
     btn.disabled = false;
@@ -149,23 +156,256 @@ function audioResultHTML(out, opts) {
   return h;
 }
 
-/* ---------------- credits ---------------- */
-async function refreshCredits() {
-  try {
-    const d = await apiGet("/credits");
-    if (d && typeof d.credits === "number") {
-      $("creditsPill").textContent = `🪙 ${d.credits.toLocaleString()} credits`;
-    } else {
-      $("creditsPill").textContent = "🪙 credits ?";
+/* ---------------- auth ---------------- */
+const fmtN = (n) => Math.floor(Number(n) || 0).toLocaleString();
+let authMode = "login";
+
+async function refreshAuth() {
+  let me = null;
+  try { me = await apiGet("/auth/me"); } catch (e) { me = null; }
+  state.auth = {
+    loggedIn: !!(me && me.logged_in),
+    email: (me && me.email) || "",
+    isAdmin: !!(me && me.is_admin),
+    credits: (me && typeof me.credits === "number") ? me.credits : 0,
+  };
+  renderHeader();
+  buildNav();
+  renderVoiceGate();
+}
+
+function renderHeader() {
+  const a = state.auth;
+  $("authBtn").hidden = a.loggedIn;
+  $("userChip").hidden = !a.loggedIn;
+  $("logoutBtn").hidden = !a.loggedIn;
+  if (a.loggedIn) {
+    $("creditsPill").textContent = `🪙 ${fmtN(a.credits)} credits`;
+    $("creditsPill").title = "Your credit balance — tap for plans";
+    $("userChip").textContent = a.email;
+  } else {
+    $("creditsPill").textContent = "🪙 Login for credits";
+    $("creditsPill").title = "Login to see your balance";
+    $("userChip").textContent = "";
+  }
+}
+
+function renderVoiceGate() {
+  const list = $("voiceList");
+  if (state.auth.loggedIn) {
+    if (list.dataset.gated) {
+      delete list.dataset.gated;
+      ensureVoices()
+        .then(() => { renderVoices(); renderSpeakerRows(); fillChangerVoices(); })
+        .catch(() => {});
     }
-  } catch (e) { $("creditsPill").textContent = "🪙 offline"; }
+    return;
+  }
+  list.dataset.gated = "1";
+  list.innerHTML = `<div class="empty">🔑 <b>Login</b> to browse voices and hear samples.<br><br><button class="cta" id="gateLogin" type="button">Login / Sign up</button></div>`;
+  const b = $("gateLogin");
+  if (b) b.onclick = () => openAuthModal("login");
+}
+
+function openAuthModal(mode) {
+  if (mode) setAuthMode(mode);
+  $("authError").hidden = true;
+  $("authModal").hidden = false;
+  setTimeout(() => $("authEmail").focus(), 60);
+}
+function closeAuthModal() { $("authModal").hidden = true; }
+function setAuthMode(mode) {
+  authMode = mode;
+  $("tabLogin").classList.toggle("active", mode === "login");
+  $("tabSignup").classList.toggle("active", mode === "signup");
+  $("authGo").textContent = mode === "login" ? "Login" : "Create account";
+  $("authSub").textContent = mode === "login"
+    ? "Login to use all voice tools with your credits."
+    : "Create your account — 1,000 free credits included.";
+}
+async function submitAuth() {
+  const email = $("authEmail").value.trim();
+  const pass = $("authPass").value;
+  const errEl = $("authError");
+  errEl.hidden = true;
+  const go = $("authGo");
+  go.disabled = true;
+  try {
+    const d = await apiFetch("/auth/" + authMode, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: pass }),
+    });
+    if (d && d.success) {
+      closeAuthModal();
+      $("authPass").value = "";
+      await refreshAuth();
+    } else {
+      throw new Error((d && d.error) || "Something went wrong.");
+    }
+  } catch (e) {
+    errEl.textContent = (e && e.data && e.data.error) || (e && e.message) || "Something went wrong.";
+    errEl.hidden = false;
+  } finally {
+    go.disabled = false;
+  }
+}
+async function logout() {
+  try { await apiPost("/auth/logout"); } catch (e) {}
+  state.cache = {};
+  state.voiceById = {};
+  state.selectedVoiceId = null;
+  await refreshAuth();
+  switchTool("tts");
+}
+function showNoCredits(resultEl, e) {
+  const need = fmtN(e.needed);
+  const bal = fmtN(e.balance);
+  const msg = encodeURIComponent(`Assalam o Alaikum! Mujhe Voxa credits chahiye. Mera account: ${state.auth.email}`);
+  resultEl.hidden = false;
+  resultEl.innerHTML = `<p class="error">⚠️ <b>Not enough credits.</b> This needs ~${need} credits, you have ${bal}.</p>
+    <p style="margin-top:.6rem"><a class="cta" style="display:inline-block;text-decoration:none" target="_blank" rel="noopener"
+      href="https://wa.me/${SUPPORT_WHATSAPP}?text=${msg}">💬 Top up on WhatsApp</a></p>`;
+  refreshAuth();
+}
+function initAuth() {
+  $("authBtn").onclick = () => openAuthModal("login");
+  $("authClose").onclick = closeAuthModal;
+  $("authModal").addEventListener("click", (e) => { if (e.target === $("authModal")) closeAuthModal(); });
+  $("tabLogin").onclick = () => setAuthMode("login");
+  $("tabSignup").onclick = () => setAuthMode("signup");
+  $("authGo").onclick = submitAuth;
+  $("authPass").addEventListener("keydown", (e) => { if (e.key === "Enter") submitAuth(); });
+  $("authEmail").addEventListener("keydown", (e) => { if (e.key === "Enter") submitAuth(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("authModal").hidden) closeAuthModal(); });
+  $("logoutBtn").onclick = logout;
+  $("creditsPill").onclick = () => {
+    if (state.auth.loggedIn) switchTool("pricing");
+    else openAuthModal("login");
+  };
+}
+
+/* ---------------- admin ---------------- */
+const ADMIN_TOOL = { id: "admin", label: "🛠️ Admin" };
+const ALL_TOOLS = () => TOOLS.concat([ADMIN_TOOL]);
+
+function statCard(label, value, sub) {
+  return `<div class="stat"><div class="stat-v">${esc(String(value))}</div><div class="stat-l">${esc(label)}</div><div class="stat-s">${esc(sub || "")}</div></div>`;
+}
+async function loadAdmin() {
+  const stats = $("adminStats");
+  stats.innerHTML = `<div class="empty">Loading…</div>`;
+  try {
+    const o = await apiGet("/admin/overview");
+    stats.innerHTML =
+      statCard("🏦 Ai33 pool", o.pool_credits == null ? "—" : fmtN(o.pool_credits), "credits left on the API key") +
+      statCard("👥 Users", fmtN(o.total_users), "registered accounts") +
+      statCard("➕ Issued", fmtN(o.credits_issued), "credits given out") +
+      statCard("➖ Consumed", fmtN(o.credits_consumed), "credits spent by users");
+  } catch (e) {
+    stats.innerHTML = `<div class="empty">Could not load stats.</div>`;
+  }
+  loadUsers();
+  loadAdminLedger();
+}
+async function loadUsers() {
+  const q = $("userSearch").value.trim();
+  const wrap = $("userTable");
+  wrap.innerHTML = `<div class="empty">Loading…</div>`;
+  try {
+    const d = await apiGet(`/admin/users?q=${encodeURIComponent(q)}&limit=100`);
+    const users = (d && d.users) || [];
+    if (!users.length) { wrap.innerHTML = `<div class="empty">No users found.</div>`; return; }
+    wrap.innerHTML = `<div class="u-row u-head"><span>Email</span><span>Balance</span><span>Spent</span><span>Joined</span><span></span></div>` +
+      users.map((u) => `<div class="u-row">
+        <span title="${esc(u.email)}">${esc(u.email)}${u.is_admin ? ' <b class="admin-tag">admin</b>' : ""}</span>
+        <span>🪙 ${fmtN(u.credits)}</span>
+        <span>${fmtN(u.total_spent)}</span>
+        <span>${esc((u.created_at || "").slice(0, 10))}</span>
+        <span><button class="ghost-btn" data-topup="${esc(u.email)}">+ Top up</button>
+        <button class="ghost-btn" data-ledger="${u.id}">Ledger</button></span>
+      </div>`).join("");
+    wrap.querySelectorAll("[data-topup]").forEach((b) => {
+      b.onclick = () => { $("topEmail").value = b.dataset.topup; $("topEmail").focus(); };
+    });
+    wrap.querySelectorAll("[data-ledger]").forEach((b) => {
+      b.onclick = () => loadAdminLedger(Number(b.dataset.ledger));
+    });
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty">Could not load users.</div>`;
+  }
+}
+async function loadAdminLedger(userId) {
+  const wrap = $("adminLedger");
+  wrap.innerHTML = `<div class="empty">Loading…</div>`;
+  try {
+    const d = await apiGet(`/admin/ledger?${userId ? "user_id=" + userId + "&" : ""}limit=50`);
+    const rows = (d && d.ledger) || [];
+    if (!rows.length) { wrap.innerHTML = `<div class="empty">No transactions yet.</div>`; return; }
+    wrap.innerHTML = rows.map((r) => {
+      const sign = r.delta >= 0 ? "+" : "−";
+      const cls = r.delta >= 0 ? "plus" : "minus";
+      let meta = "";
+      try {
+        const m = JSON.parse(r.meta || "{}");
+        meta = [m.plan, m.task_id ? ("task " + String(m.task_id).slice(0, 8)) : ""].filter(Boolean).join(" · ");
+      } catch (e) {}
+      return `<div class="hist-item"><div class="meta">
+        <div class="t ${cls}">${sign}${fmtN(Math.abs(r.delta))} <span class="dim">→ ${fmtN(r.balance_after)}</span></div>
+        <div class="d">${esc(r.reason)}${meta ? " · " + esc(meta) : ""} · user #${r.user_id} · ${esc((r.created_at || "").replace("T", " ").slice(0, 16))}</div>
+      </div></div>`;
+    }).join("");
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty">Could not load ledger.</div>`;
+  }
+}
+function initAdmin() {
+  $("topPlan").onchange = () => { $("topCustomWrap").hidden = $("topPlan").value !== "custom"; };
+  let searchT = null;
+  $("userSearch").addEventListener("input", () => { clearTimeout(searchT); searchT = setTimeout(loadUsers, 350); });
+  $("adminRefresh").onclick = loadAdmin;
+  $("topGo").onclick = async () => {
+    const email = $("topEmail").value.trim().toLowerCase();
+    const msgEl = $("topMsg");
+    msgEl.hidden = true;
+    let amount, plan;
+    if ($("topPlan").value === "custom") {
+      amount = Number($("topCustom").value);
+      plan = "custom";
+    } else {
+      const parts = $("topPlan").value.split("|");
+      amount = Number(parts[0]);
+      plan = parts[1] || "custom";
+    }
+    if (!email || !email.includes("@")) { msgEl.textContent = "⚠️ Please enter the user's email."; msgEl.hidden = false; return; }
+    if (!amount || amount <= 0) { msgEl.textContent = "⚠️ Please enter a valid credit amount."; msgEl.hidden = false; return; }
+    $("topGo").disabled = true;
+    try {
+      const d = await apiPost("/admin/topup", { email, amount, plan });
+      if (d && d.success) {
+        msgEl.textContent = `✅ ${fmtN(amount)} credits added to ${d.email}. New balance: ${fmtN(d.new_balance)}.`;
+        msgEl.hidden = false;
+        $("topEmail").value = "";
+        loadUsers();
+        loadAdminLedger();
+      } else {
+        throw new Error((d && d.error) || "Top-up failed.");
+      }
+    } catch (e) {
+      msgEl.textContent = "⚠️ " + ((e && e.data && e.data.error) || (e && e.message) || "Top-up failed.");
+      msgEl.hidden = false;
+    } finally {
+      $("topGo").disabled = false;
+    }
+  };
 }
 
 /* ---------------- tool navigation ---------------- */
 function buildNav() {
   const nav = $("toolNav");
   nav.innerHTML = "";
-  TOOLS.forEach((t) => {
+  const tools = (state.auth && state.auth.isAdmin) ? TOOLS.concat([ADMIN_TOOL]) : TOOLS;
+  tools.forEach((t) => {
     const b = document.createElement("button");
     b.className = "tool-tab" + (t.id === state.tool ? " active" : "");
     b.textContent = t.label;
@@ -177,12 +417,13 @@ function switchTool(id) {
   state.tool = id;
   buildNav();
   document.querySelectorAll(".tool").forEach((el) => { el.hidden = el.dataset.tool !== id; });
-  const tool = TOOLS.find((t) => t.id === id);
+  const tool = ALL_TOOLS().find((t) => t.id === id) || { id };
   $("voicePanel").style.display = "";
   document.querySelector(".layout").classList.toggle("no-voices", !tool.voices);
   if (id === "history") loadHistory();
   if (id === "clone") renderMyClones();
   if (id === "image") loadImageModels();
+  if (id === "admin") loadAdmin();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -194,7 +435,7 @@ function buildProviderPills() {
     const b = document.createElement("button");
     b.className = "pill" + (state.provider === val ? " active" : "");
     b.textContent = label;
-    b.onclick = () => { state.provider = val; state.visibleCount = 60; buildProviderPills(); ensureVoices().then(renderVoices); };
+    b.onclick = () => { state.provider = val; state.visibleCount = 60; buildProviderPills(); ensureVoices().then(renderVoices).catch(() => {}); };
     wrap.appendChild(b);
   });
 }
@@ -811,16 +1052,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   initSFX();
   initImage();
   initPricing();
+  initAuth();
+  initAdmin();
   $("histType").addEventListener("change", loadHistory);
-  $("creditsPill").onclick = refreshCredits;
   switchTool("tts");
-  refreshCredits();
-  try {
-    await ensureVoices();
-    renderVoices();
-    renderSpeakerRows();
-    fillChangerVoices();
-  } catch (e) {
-    $("voiceList").innerHTML = `<div class="empty">Could not load voices. Check your connection and API key.</div>`;
+  await refreshAuth();
+  if (state.auth.loggedIn) {
+    try {
+      await ensureVoices();
+      renderVoices();
+      renderSpeakerRows();
+      fillChangerVoices();
+    } catch (e) {
+      $("voiceList").innerHTML = `<div class="empty">Could not load voices. Check your connection and API key.</div>`;
+    }
   }
 });

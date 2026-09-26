@@ -17,8 +17,11 @@
     <span class="brand-sub">AI Voice Studio</span>
   </div>
   <nav class="tools" id="toolNav" aria-label="Tools"></nav>
-  <div class="topbar-right">
-    <button class="credits-pill" id="creditsPill" title="Remaining API credits">… credits</button>
+  <div class="topbar-right" id="topbarRight">
+    <button class="credits-pill" id="creditsPill" title="Your credit balance">…</button>
+    <button class="auth-btn" id="authBtn" hidden>🔑 Login</button>
+    <span class="user-chip" id="userChip" hidden></span>
+    <button class="ghost-btn" id="logoutBtn" hidden>Logout</button>
   </div>
 </header>
 
@@ -244,6 +247,7 @@
     <div class="tool" data-tool="music" hidden>
       <div class="card">
         <div class="card-head"><h2>Music Studio</h2></div>
+        <p class="hint">⚠️ The music provider is temporarily down on the upstream side — this tool will be back soon. Other tools work normally.</p>
         <label class="field">Song title
           <input type="text" id="musTitle" placeholder="e.g. Midnight Drive" maxlength="40">
         </label>
@@ -382,7 +386,7 @@
         <ol class="steps">
           <li>Tap <b>Buy on WhatsApp</b> on your plan — the message is pre-written for you.</li>
           <li>Pay via <b>JazzCash / Easypaisa / bank transfer</b> and share the screenshot.</li>
-          <li>Your credits get activated — start creating right away.</li>
+          <li>Your credits are added to your account — start creating right away.</li>
         </ol>
         <p class="hint">Monthly plans renew every 30 days. Lifetime credits never expire.</p>
       </div>
@@ -410,6 +414,42 @@
       </div>
     </div>
 
+    <!-- ============ ADMIN ============ -->
+    <div class="tool" data-tool="admin" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2>🛠️ Admin Panel</h2>
+          <button class="ghost-btn" id="adminRefresh">↻ Refresh</button>
+        </div>
+        <div class="stat-grid" id="adminStats"></div>
+        <h3 class="subhead">Top up user credits</h3>
+        <p class="hint">User EasyPaisa/JazzCash par pay kare to yahan uska email likh kar credits add kar dein — fori tor par uske account me ajayenge.</p>
+        <div class="row">
+          <label class="field">User email
+            <input type="email" id="topEmail" placeholder="customer@gmail.com" autocomplete="off">
+          </label>
+          <label class="field">Plan
+            <select id="topPlan">
+              <option value="500000|Starter monthly">Starter — Rs 800/mo → 500,000 credits</option>
+              <option value="1000000|Creator monthly">Creator — Rs 1,600/mo → 1,000,000 credits</option>
+              <option value="1000000|Lifetime">Lifetime — Rs 2,000 → 1,000,000 (never expire)</option>
+              <option value="custom">Custom amount…</option>
+            </select>
+          </label>
+          <label class="field" id="topCustomWrap" hidden>Custom credits
+            <input type="number" id="topCustom" min="1" step="1" placeholder="e.g. 250000">
+          </label>
+        </div>
+        <button class="cta" id="topGo">➕ Add credits</button>
+        <p class="hint" id="topMsg" hidden></p>
+        <h3 class="subhead">Users</h3>
+        <input class="search" id="userSearch" type="search" placeholder="Search users by email…">
+        <div class="user-table" id="userTable"></div>
+        <h3 class="subhead">Recent transactions</h3>
+        <div class="hist-list" id="adminLedger"></div>
+      </div>
+    </div>
+
   </section>
 </main>
 
@@ -418,6 +458,29 @@
 </footer>
 
 <audio id="previewAudio" preload="none"></audio>
+
+<!-- ============ AUTH MODAL ============ -->
+<div class="modal-backdrop" id="authModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Login or sign up">
+    <button class="modal-x" id="authClose" aria-label="Close">✕</button>
+    <h2>🎙️ Welcome to Voxa</h2>
+    <p class="hint" id="authSub">Login to use all voice tools with your credits.</p>
+    <div class="auth-tabs">
+      <button id="tabLogin" class="active" type="button">Login</button>
+      <button id="tabSignup" type="button">Sign up</button>
+    </div>
+    <label class="field">Email
+      <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email">
+    </label>
+    <label class="field">Password
+      <input type="password" id="authPass" placeholder="Minimum 8 characters" autocomplete="current-password">
+    </label>
+    <p class="error" id="authError" hidden></p>
+    <button class="cta" id="authGo" type="button">Login</button>
+    <p class="hint">New here? Sign up and get <b>1,000 free credits</b> to try everything.</p>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>

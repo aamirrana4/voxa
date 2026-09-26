@@ -12,3 +12,13 @@ services:
     envVars:
       - key: AI33_API_KEY
         sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: SIGNUP_BONUS
+        value: "1000"
+      - key: COOKIE_SECURE
+        value: "1"

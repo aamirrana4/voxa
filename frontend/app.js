@@ -21,7 +21,7 @@ const PROVIDER_LABEL = { elevenlabs: "ElevenLabs", minimax: "MiniMax", edge: "Ed
 
 /* Apna WhatsApp number yahan likhein (country code ke saath, baghair + ke).
    Example: "923001234567". Pricing page ke Buy buttons isi number par message bhejenge. */
-const SUPPORT_WHATSAPP = "92XXXXXXXXXX";
+const SUPPORT_WHATSAPP = "923333581003";
 
 const TOOLS = [
   { id: "tts", label: "🎙️ Speak", voices: true },

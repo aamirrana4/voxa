@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxa — AI Voice Studio</title>
+<meta name="description" content="Voxa — text to speech, dialogue, voice cloning, dubbing, music and more.">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">◉</span>
+    <span class="brand-name">Voxa</span>
+    <span class="brand-sub">AI Voice Studio</span>
+  </div>
+  <nav class="tools" id="toolNav" aria-label="Tools"></nav>
+  <div class="topbar-right">
+    <button class="credits-pill" id="creditsPill" title="Remaining API credits">… credits</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- Voice browser (shown for voice-based tools) -->
+  <aside class="voices" id="voicePanel">
+    <div class="voices-head">
+      <h2>Voices</h2>
+      <p class="hint">Play a sample first, then pick your voice.</p>
+    </div>
+    <input class="search" id="voiceSearch" type="search" placeholder="Search voices, languages…">
+    <div class="pills" id="providerPills"></div>
+    <div class="filters">
+      <select id="genderFilter" aria-label="Gender filter">
+        <option value="">All genders</option>
+        <option>Female</option>
+        <option>Male</option>
+      </select>
+      <select id="langFilter" aria-label="Language filter">
+        <option value="">All languages</option>
+      </select>
+    </div>
+    <div class="voice-list" id="voiceList"></div>
+    <button class="ghost-btn" id="loadMoreVoices" hidden>Load more</button>
+  </aside>
+
+  <!-- Workspace -->
+  <section class="workspace" id="workspace">
+
+    <!-- ============ TEXT TO SPEECH ============ -->
+    <div class="tool" data-tool="tts">
+      <div class="card">
+        <div class="card-head">
+          <h2>Text to Speech</h2>
+          <div class="card-actions">
+            <label class="file-btn">Import file
+              <input type="file" id="ttsFile" accept=".txt,.srt,.md" hidden>
+            </label>
+            <button class="ghost-btn" id="ttsClear">Clear</button>
+          </div>
+        </div>
+        <textarea id="ttsText" rows="10" placeholder="Paste or type your text here…"></textarea>
+        <div class="row between">
+          <span class="counter"><span id="ttsCount">0</span> characters</span>
+          <span class="selected-voice" id="ttsVoiceLabel">No voice selected</span>
+        </div>
+        <div class="controls">
+          <label class="slider-label">Speed <span id="ttsSpeedVal">1.00×</span>
+            <input type="range" id="ttsSpeed" min="0.5" max="1.5" step="0.05" value="1">
+          </label>
+          <label class="check"><input type="checkbox" id="ttsTranscript"> Export transcript (SRT)</label>
+        </div>
+        <div class="tags">
+          <span class="tags-label">Insert tag:</span>
+          <button data-tag="[laughter]">😂 laughter</button>
+          <button data-tag="[sigh]">😮‍💨 sigh</button>
+          <button data-tag="[pause]">⏸ pause</button>
+          <button data-tag="[whisper]">🤫 whisper</button>
+          <button data-tag="[speed_fast]">⏩ fast</button>
+          <button data-tag="[speed_slow]">🐢 slow</button>
+        </div>
+        <button class="cta" id="ttsGenerate">▶ Generate speech</button>
+        <div class="progress" id="ttsProgress" hidden>
+          <div class="bar"><span></span></div><p>Generating… <span class="pct"></span></p>
+        </div>
+        <div class="result" id="ttsResult" hidden></div>
+      </div>
+    </div>
+
+    <!-- ============ DIALOGUE ============ -->
+    <div class="tool" data-tool="dialogue" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2>Dialogue <span class="tag-new">multi-speaker</span></h2>
+        </div>
+        <div id="speakerRows"></div>
+        <button class="ghost-btn" id="addSpeaker">+ Add speaker</button>
+        <textarea id="dlgText" rows="8" placeholder="A&gt; Hello there!&#10;B&gt; Hi! How are you today?&#10;A&gt; Doing great, thanks for asking."></textarea>
+        <div class="controls">
+          <label class="slider-label">Pause between speakers <span id="dlgDelayVal">0.4s</span>
+            <input type="range" id="dlgDelay" min="0" max="5" step="0.1" value="0.4">
+          </label>
+          <label class="check"><input type="checkbox" id="dlgTranscript"> Export transcript (SRT)</label>
+        </div>
+        <button class="cta" id="dlgGenerate">▶ Generate dialogue</button>
+        <div class="progress" id="dlgProgress" hidden>
+          <div class="bar"><span></span></div><p>Generating… <span class="pct"></span></p>
+        </div>
+        <div class="result" id="dlgResult" hidden></div>
+      </div>
+    </div>
+
+    <!-- ============ VOICE CLONE ============ -->
+    <div class="tool" data-tool="clone" hidden>
+      <div class="card">
+        <div class="card-head"><h2>Clone a Voice</h2></div>
+        <p class="hint">Upload a clear 3–30 second sample (MP3 or WAV, max 10MB). Use only voices you own or have permission to clone.</p>
+        <label class="field">Voice name
+          <input type="text" id="cloneName" placeholder="e.g. My narrator voice">
+        </label>
+        <label class="field">Audio sample
+          <input type="file" id="cloneFile" accept=".mp3,.wav,audio/mpeg,audio/wav">
+        </label>
+        <button class="cta" id="cloneGenerate">⧉ Create cloned voice</button>
+        <div class="progress" id="cloneProgress" hidden>
+          <div class="bar"><span></span></div><p>Cloning… <span class="pct"></span></p>
+        </div>
+        <div class="result" id="cloneResult" hidden></div>
+        <h3 class="subhead">My cloned voices</h3>
+        <div class="voice-list" id="myClones"></div>
+      </div>
+    </div>
+
+    <!-- ============ SPEECH TO TEXT ============ -->
+    <div class="tool" data-tool="stt" hidden>
+      <div class="card">
+        <div class="card-head"><h2>Speech to Text</h2></div>
+        <p class="hint">Transcribe interviews, meetings or rough narration.</p>
+        <label class="field">Audio file
+          <input type="file" id="sttFile" accept=".mp3,.aac,.aiff,.ogg,.opus,.wav,.webm,.flac,.m4a">
+        </label>
+        <div class="controls">
+          <label class="check"><input type="checkbox" id="sttEvents"> Tag audio events</label>
+        </div>
+        <button class="cta" id="sttGenerate">⧉ Transcribe</button>
+        <div class="progress" id="sttProgress" hidden>
+          <div class="bar"><span></span></div><p>Transcribing… <span class="pct"></span></p>
+        </div>
+        <div class="result" id="sttResult" hidden></div>
+      </div>
+    </div>
+
+    <!-- ============ DUBBING ============ -->
+    <div class="tool" data-tool="dubbing" hidden>
+      <div class="card">
+        <div class="card-head"><h2>Auto Dubbing</h2></div>
+        <p class="hint">Localize audio into another language. Max 20MB or 5 minutes.</p>
+        <label class="field">Audio file (m4a / mp3)
+          <input type="file" id="dubFile" accept=".m4a,.mp3">
+        </label>
+        <div class="row">
+          <label class="field">Target language
+            <select id="dubLang">
+              <option value="es">Spanish</option><option value="fr">French</option>
+              <option value="de">German</option><option value="it">Italian</option>
+              <option value="pt">Portuguese</option><option value="ur">Urdu</option>
+              <option value="hi">Hindi</option><option value="ar">Arabic</option>
+              <option value="zh">Chinese</option><option value="ja">Japanese</option>
+              <option value="ko">Korean</option><option value="tr">Turkish</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label class="field">Speakers (0 = auto)
+            <input type="number" id="dubSpeakers" min="0" max="10" value="0">
+          </label>
+        </div>
+        <div class="controls">
+          <label class="check"><input type="checkbox" id="dubNoClone"> Disable voice cloning</label>
+        </div>
+        <button class="cta" id="dubGenerate">⧉ Start dubbing</button>
+        <div class="progress" id="dubProgress" hidden>
+          <div class="bar"><span></span></div><p>Dubbing… <span class="pct"></span></p>
+        </div>
+        <div class="result" id="dubResult" hidden></div>
+      </div>
+    </div>
+
+    <!-- ============ VOICE CHANGER ============ -->
+    <div class="tool" data-tool="changer" hidden>
+      <div class="card">
+        <div class="card-head"><h2>Voice Changer</h2></div>
+        <p class="hint">Convert speech to another voice. Use only audio you own or have consent to modify.</p>
+        <label class="field">Audio file (mp3 / m4a / wav, max 300MB)
+          <input type="file" id="chgFile" accept=".mp3,.m4a,.wav">
+        </label>
+        <div class="row">
+          <label class="field">Target voice
+            <select id="chgVoice"></select>
+          </label>
+          <label class="field">Model
+            <select id="chgModel">
+              <option value="eleven_multilingual_sts_v2">Eleven Multilingual v2</option>
+            </select>
+          </label>
+        </div>
+        <div class="controls sliders">
+          <label class="slider-label">Stability <span id="chgStabVal">50%</span>
+            <input type="range" id="chgStab" min="0" max="1" step="0.05" value="0.5"></label>
+          <label class="slider-label">Similarity <span id="chgSimVal">75%</span>
+            <input type="range" id="chgSim" min="0" max="1" step="0.05" value="0.75"></label>
+          <label class="slider-label">Style <span id="chgStyleVal">20%</span>
+            <input type="range" id="chgStyle" min="0" max="1" step="0.05" value="0.2"></label>
+        </div>
+        <div class="controls">
+          <label class="check"><input type="checkbox" id="chgNoise" checked> Remove background noise</label>
+          <label class="check"><input type="checkbox" id="chgBoost" checked> Speaker boost</label>
+        </div>
+        <button class="cta" id="chgGenerate">⧉ Convert voice</button>
+        <div class="progress" id="chgProgress" hidden>
+          <div class="bar"><span></span></div><p>Converting… <span class="pct"></span></p>
+        </div>
+        <div class="result" id="chgResult" hidden></div>
+      </div>
+    </div>
+
+    <!-- ============ VOICE ISOLATE ============ -->
+    <div class="tool" data-tool="isolate" hidden>
+      <div class="card">
+        <div class="card-head"><h2>Voice Isolate</h2></div>
+        <p class="hint">Remove background noise before transcription or dubbing. Great for podcasts, tutorials, lectures and calls.</p>
+        <label class="field">Audio file (mp3 / m4a / wav, max 300MB)
+          <input type="file" id="isoFile" accept=".mp3,.m4a,.wav">
+        </label>
+        <button class="cta" id="isoGenerate">⧉ Isolate voice</button>
+        <div class="progress" id="isoProgress" hidden>
+          <div class="bar"><span></span></div><p>Isolating… <span class="pct"></span></p>
+        </div>
+        <div class="result" id="isoResult" hidden></div>
+      </div>
+    </div>
+
+    <!-- ============ MUSIC ============ -->
+    <div class="tool" data-tool="music" hidden>
+      <div class="card">
+        <div class="card-head"><h2>Music Studio</h2></div>
+        <label class="field">Song title
+          <input type="text" id="musTitle" placeholder="e.g. Midnight Drive" maxlength="40">
+        </label>
+        <label class="field">Describe the music
+          <textarea id="musIdea" rows="3" placeholder="Dreamy, atmospheric lo-fi jazz for a quiet evening…" maxlength="2000"></textarea>
+        </label>
+        <label class="field">Lyrics <span class="opt">(optional)</span>
+          <textarea id="musLyrics" rows="3" placeholder="Leave empty for instrumental…" maxlength="3500"></textarea>
+        </label>
+        <div class="row">
+          <label class="field">Model
+            <select id="musModel">
+              <option value="music-2.5+">Music 2.5+</option>
+              <option value="music-2.5">Music 2.5</option>
+              <option value="music-2.0">Music 2.0</option>
+            </select>
+          </label>
+          <label class="field">Versions
+            <select id="musCount"><option>1</option><option>2</option><option>3</option></select>
+          </label>
+        </div>
+        <div class="controls">
+          <label class="check"><input type="checkbox" id="musInstr"> Instrumental only</label>
+        </div>
+        <div class="chips" id="genreChips"></div>
+        <button class="cta" id="musGenerate">⧉ Compose music</button>
+        <div class="progress" id="musProgress" hidden>
+          <div class="bar"><span></span></div><p>Composing… <span class="pct"></span></p>
+        </div>
+        <div class="result" id="musResult" hidden></div>
+      </div>
+    </div>
+
+    <!-- ============ SOUND FX ============ -->
+    <div class="tool" data-tool="sfx" hidden>
+      <div class="card">
+        <div class="card-head"><h2>Sound Effects</h2></div>
+        <p class="hint">Transitions, ambience, stingers and loopable cues.</p>
+        <label class="field">Describe the sound
+          <input type="text" id="sfxText" placeholder="Thunder rolling with heavy rain…" maxlength="450">
+        </label>
+        <div class="controls sliders">
+          <label class="slider-label">Duration <span id="sfxDurVal">5s</span>
+            <input type="range" id="sfxDur" min="0.5" max="30" step="0.5" value="5"></label>
+          <label class="slider-label">Prompt influence <span id="sfxInfVal">0.3</span>
+            <input type="range" id="sfxInf" min="0" max="1" step="0.05" value="0.3"></label>
+        </div>
+        <div class="controls">
+          <label class="check"><input type="checkbox" id="sfxLoop"> Loopable</label>
+        </div>
+        <button class="cta" id="sfxGenerate">⧉ Generate sound</button>
+        <div class="progress" id="sfxProgress" hidden>
+          <div class="bar"><span></span></div><p>Generating… <span class="pct"></span></p>
+        </div>
+        <div class="result" id="sfxResult" hidden></div>
+      </div>
+    </div>
+
+    <!-- ============ IMAGE ============ -->
+    <div class="tool" data-tool="image" hidden>
+      <div class="card">
+        <div class="card-head"><h2>Image Studio</h2></div>
+        <p class="hint">Thumbnails, storyboards and visual assets for your videos.</p>
+        <label class="field">Model
+          <select id="imgModel"><option>Loading…</option></select>
+        </label>
+        <label class="field">Image description
+          <textarea id="imgPrompt" rows="3" placeholder="A beautiful sunset over the ocean in watercolor style…"></textarea>
+        </label>
+        <div class="row">
+          <label class="field">Aspect ratio
+            <select id="imgRatio">
+              <option>16:9</option><option>1:1</option><option>9:16</option><option>4:3</option><option>3:4</option>
+            </select>
+          </label>
+          <label class="field">Resolution
+            <select id="imgRes"><option>2K</option><option>1K</option></select>
+          </label>
+          <label class="field">Quantity
+            <select id="imgCount"><option>1</option><option>2</option><option>4</option></select>
+          </label>
+        </div>
+        <button class="cta" id="imgGenerate">⧉ Generate images</button>
+        <div class="progress" id="imgProgress" hidden>
+          <div class="bar"><span></span></div><p>Generating… <span class="pct"></span></p>
+        </div>
+        <div class="result grid" id="imgResult" hidden></div>
+      </div>
+    </div>
+
+    <!-- ============ PRICING ============ -->
+    <div class="tool" data-tool="pricing" hidden>
+      <div class="card">
+        <div class="card-head"><h2>Plans & Pricing</h2></div>
+        <p class="hint">Simple pricing in PKR. Pay with JazzCash, Easypaisa or bank transfer — activate over WhatsApp in minutes.</p>
+        <div class="price-grid">
+          <div class="price-card">
+            <h3>Starter</h3>
+            <div class="price">Rs 800<span>/month</span></div>
+            <div class="credits">500,000 <span>credits · 5 lakh</span></div>
+            <ul>
+              <li>~850 minutes of AI voice</li>
+              <li>All 11 tools included</li>
+              <li>All voices + sample previews</li>
+              <li>Dialogue, cloning, dubbing & more</li>
+            </ul>
+            <a class="cta price-btn" data-plan="Starter — Rs 800/month (5 lakh credits)">Buy on WhatsApp</a>
+          </div>
+          <div class="price-card featured">
+            <div class="ribbon">Most Popular</div>
+            <h3>Creator</h3>
+            <div class="price">Rs 1,600<span>/month</span></div>
+            <div class="credits">1,000,000 <span>credits · 10 lakh</span></div>
+            <ul>
+              <li>~1,700 minutes of AI voice</li>
+              <li>All 11 tools included</li>
+              <li>All voices + sample previews</li>
+              <li>Dialogue, cloning, dubbing & more</li>
+            </ul>
+            <a class="cta price-btn" data-plan="Creator — Rs 1,600/month (10 lakh credits)">Buy on WhatsApp</a>
+          </div>
+          <div class="price-card">
+            <h3>Lifetime</h3>
+            <div class="price">Rs 2,000<span> one-time</span></div>
+            <div class="credits">1,000,000 <span>credits · 10 lakh</span></div>
+            <ul>
+              <li><b>Never expire</b> — use anytime</li>
+              <li>~1,700 minutes of AI voice</li>
+              <li>All 11 tools included</li>
+              <li>All voices + sample previews</li>
+            </ul>
+            <a class="cta price-btn" data-plan="Lifetime — Rs 2,000 one-time (10 lakh credits, never expire)">Buy on WhatsApp</a>
+          </div>
+        </div>
+        <h3 class="subhead">How it works</h3>
+        <ol class="steps">
+          <li>Tap <b>Buy on WhatsApp</b> on your plan — the message is pre-written for you.</li>
+          <li>Pay via <b>JazzCash / Easypaisa / bank transfer</b> and share the screenshot.</li>
+          <li>Your credits get activated — start creating right away.</li>
+        </ol>
+        <p class="hint">Monthly plans renew every 30 days. Lifetime credits never expire.</p>
+      </div>
+    </div>
+
+    <!-- ============ HISTORY ============ -->
+    <div class="tool" data-tool="history" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2>History</h2>
+          <select id="histType" aria-label="Filter by type">
+            <option value="">All types</option>
+            <option value="tts">Text to speech</option>
+            <option value="dialogue">Dialogue</option>
+            <option value="speech-to-text">Speech to text</option>
+            <option value="dubbing">Dubbing</option>
+            <option value="voice-changer">Voice changer</option>
+            <option value="voice-isolate">Voice isolate</option>
+            <option value="sound-effect">Sound effect</option>
+            <option value="music">Music</option>
+            <option value="imagen2">Images</option>
+          </select>
+        </div>
+        <div id="histList" class="hist-list"></div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Voxa — your own AI voice studio · key stays on your server</span>
+</footer>
+
+<audio id="previewAudio" preload="none"></audio>
+<script src="app.js"></script>
+</body>
+</html>
